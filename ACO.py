@@ -56,7 +56,7 @@ class TaskNode:
         }
         return task_dict
 
-class ACOSolver:
+class TeACO:
     def __init__(self, layout, flight_schedule, tug_props, aco_params, max_tugs, parallel=False):
         self.layout = layout
         self.flight_schedule = flight_schedule
