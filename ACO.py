@@ -7,7 +7,10 @@ from tqdm import tqdm
 from multiprocessing import Pool
 
 class TeACO:
-    def __init__(self, task_nodes, feasible_tasks, task_energy, moving_energy, energy_to_depot, aco_params, tug_props, max_tugs, parallel=False):
+    def __init__(self, task_nodes, feasible_tasks,
+                 task_energy, moving_energy, energy_to_depot,
+                 aco_params, tug_props, max_tugs,
+                 parallel=False, plot_obj=True):
         self.tug_props = tug_props
         self.n_ants = aco_params['n_ants']
         self.n_iterations = aco_params['n_iterations']
@@ -19,6 +22,7 @@ class TeACO:
         self.n_ranked_ants = aco_params['n_ranked_ants']
         self.max_tugs = max_tugs
         self.parallel = parallel
+        self.plot_obj = plot_obj
 
         # Init task node list
         self.task_nodes = task_nodes
@@ -39,7 +43,6 @@ class TeACO:
         self.pheromones = self.initialize_pheromone()
         self.heuristics = self.initialize_heuristics()
         print("DONE")
-
 
 
         print(f"Initialized ACO solver module with alpha={self.alpha}, beta={self.beta}, evaporation_rate={self.evaporation_rate}")
@@ -70,8 +73,9 @@ class TeACO:
                 best_solution = iteration_best
                 best_obj = it_best_objective
 
-        plt.plot(it_best_objectives)
-        plt.show()
+        if self.plot_obj:
+            plt.plot(it_best_objectives)
+            plt.show()
         return best_solution
 
     @classmethod
@@ -100,7 +104,6 @@ class TeACO:
                 last_task_ind = tug_route[-1]
                 if solver.task_nodes[next_task].task_type == 'towing':
                     tow_tasks.remove(next_task)
-
 
             solution.append(tug_route)
         return solution
@@ -161,49 +164,6 @@ class TeACO:
         selected_index = np.random.choice(len(feas_tasks), p=probabilities)
 
         return feas_tasks[selected_index]
-
-    def generate_task_nodes(self):
-        task_nodes = [TaskNode('start', 0, starting_depot=self.layout.depots[0])]
-
-        for flight in self.flight_schedule:
-            t_end = flight['timestamp'] + self.layout.task_time(flight)
-            task_fuel = self.layout.task_fuel(flight)
-            task = TaskNode('towing', len(task_nodes), flight=flight, t_end=t_end, task_objective=task_fuel)
-            task_nodes.append(task)
-
-        t_first_flight = task_nodes[1].t_start
-        t_last_flight = task_nodes[-1].t_start
-        t = t_first_flight
-        while t <= t_last_flight:
-            task = TaskNode('charging', len(task_nodes),
-                            charging_depot=self.layout.depots[0],
-                            t_start_charge=t,
-                            charge_index=len(task_nodes)-len(self.flight_schedule)-1,
-                            charge_interval=self.tug_props['charge_interval'])
-            task_nodes.append(task)
-            t += self.tug_props['charge_interval']
-
-        return task_nodes
-
-    def compute_feasible_tasks(self):
-        feasible_tasks = []
-
-        for task in self.task_nodes:
-            feas_tasks = []
-            if task.task_id == 'START':
-                feas_tasks = self.tow_indices
-            else:
-                for other_task in self.task_nodes:
-                    if task.t_end + self.layout.free_moving_time(task.end_node, other_task.start_node) < other_task.t_start\
-                            and other_task.t_start - task.t_end < self.tug_props['max_idle_time']:
-                        feas_tasks.append(other_task.index)
-                        # Only add the next available charging task
-                        if other_task.task_type == 'charging':
-                            break
-
-            feasible_tasks.append(np.array(feas_tasks))
-
-        return feasible_tasks
 
     def get_feasible_tasks(self, from_task):
         return self.time_feasible_tasks[from_task]
