@@ -6,60 +6,8 @@ import matplotlib.pyplot as plt
 from tqdm import tqdm
 from multiprocessing import Pool
 
-class TaskNode:
-    def __init__(self, task_type, index, flight=None, t_end=None, starting_depot=None, charging_depot=None, t_start_charge=None, charge_interval=None, charge_index=None, task_objective=None):
-        self.task_type = task_type
-        if task_type == 'towing':
-            self.task_id = 'TOW-' + flight['ac_id']
-            self.ac_id = flight['ac_id']
-            self.direction = flight['direction']
-            self.t_start = flight['timestamp']
-            self.t_end = t_end
-            self.start_node = flight['start_node']
-            self.end_node = flight['end_node']
-            self.index = index
-            self.tow_index = index - 1
-            self.ac_class = flight['ac_class']
-            self.task_objective = task_objective
-        elif task_type == 'start':
-            self.task_id = 'START'
-            self.t_start = -2
-            self.t_end = -1
-            self.start_node = starting_depot
-            self.end_node = starting_depot
-            self.ac_class = "NA"
-            self.task_objective = 0
-        elif task_type == 'charging':
-            self.task_id = 'CHARGE-' + str(charge_index)
-            self.t_start = t_start_charge
-            self.t_end = self.t_start + charge_interval - 0.00001
-            self.start_node = charging_depot
-            self.end_node = charging_depot
-            self.charge_index = charge_index
-            self.index = index
-            self.ac_class = "NA"
-            self.task_objective = 0
-        else:
-            raise ValueError(f"Unkown task type when creating task node: {task_type}")
-
-    def print_node(self):
-        if self.task_type == 'towing':
-            print(f"Task id: {self.task_id}, start time: {self.t_start:.3f}, end time: {self.t_end:.3f}, start node: {self.start_node}, end node: {self.end_node}")
-        else:
-            print(f"Task id: {self.task_id}")
-
-    def get_task_dict(self):
-        task_dict = {
-            'start_node': self.start_node,
-            'end_node': self.end_node,
-            'ac_class': self.ac_class
-        }
-        return task_dict
-
 class TeACO:
-    def __init__(self, layout, flight_schedule, tug_props, aco_params, max_tugs, parallel=False):
-        self.layout = layout
-        self.flight_schedule = flight_schedule
+    def __init__(self, task_nodes, feasible_tasks, task_energy, moving_energy, energy_to_depot, aco_params, tug_props, max_tugs, parallel=False):
         self.tug_props = tug_props
         self.n_ants = aco_params['n_ants']
         self.n_iterations = aco_params['n_iterations']
@@ -73,36 +21,18 @@ class TeACO:
         self.parallel = parallel
 
         # Init task node list
-        print("Initializing task nodes and time feasible tasks...", end=" ")
-        self.task_nodes = self.generate_task_nodes()
+        self.task_nodes = task_nodes
+        self.time_feasible_tasks = feasible_tasks
+        self.task_energy = task_energy
+        self.moving_energy = moving_energy
+        self.energy_to_depot = energy_to_depot
+
         self.tow_indices = np.array([node.index for node in self.task_nodes if node.task_type=='towing'])
         self.charge_indices = np.array([node.index for node in self.task_nodes if node.task_type=='charging'])
         self.start_index = 0
-        self.task_ids = []
-        self.task_dict = {}
-        for task in self.task_nodes:
-            self.task_dict[task.task_id] = task
-            self.task_ids.append(task.task_id)
 
-        # Task start and end times
-        self.task_start_times = np.array([node.t_start for node in self.task_nodes])
-        self.task_end_times = np.array([node.t_end for node in self.task_nodes])
-
-        # Time feasible task list
-        self.time_feasible_tasks  = self.compute_feasible_tasks()
-        print("DONE")
-
-        # Precompute battery discharges
-        print("Precomputing energy matrices and task fuel savings...", end=" ")
-        self.task_energy = np.array([-self.layout.task_energy(node.get_task_dict()) for node in self.task_nodes])
-        self.task_energy[self.charge_indices] = self.tug_props['charge_power'] * self.tug_props['charge_interval'] / 3600
-        self.moving_energy = np.array([[-self.layout.free_moving_energy(i.end_node, j.start_node) for j in self.task_nodes] for i in self.task_nodes])
-        charging_depot = self.layout.depots[0]
-        self.energy_to_depot = np.array([-self.layout.free_moving_energy(node.end_node, charging_depot) for node in self.task_nodes])
         self.energy_task_and_return = self.moving_energy + self.task_energy + self.energy_to_depot
         self.task_objectives = np.array([node.task_objective for node in self.task_nodes])
-        print("DONE")
-
 
         # Initialize pheromones and heuristics
         print("Initializing pheromones and heuristics...", end=" ")
