@@ -165,9 +165,6 @@ class TeACO:
 
         return feas_tasks[selected_index]
 
-    def get_feasible_tasks(self, from_task):
-        return self.time_feasible_tasks[from_task]
-
     def initialize_heuristics(self):
         n_task_nodes = len(self.task_nodes)
         h_mat = np.zeros((n_task_nodes, n_task_nodes))
@@ -216,35 +213,3 @@ class TeACO:
         deposit = self.calc_solution_obj(solution) * self.deposit_factor
 
         return deposit
-
-    def extract_aco_solution(self, solution):
-        tug_schedule = {}
-
-        for task_chain in solution:
-            tug_id = 'GV-' + str(len(tug_schedule))
-            tug_schedule[tug_id] = []
-            for task in task_chain:
-                task_node = self.task_nodes[task]
-                if task_node.task_type == 'towing':
-                    task_dict = {
-                        'ac_id': task_node.ac_id,
-                        'direction': task_node.direction,
-                        't_start': task_node.t_start,
-                        't_end': task_node.t_end,
-                        'start_node': task_node.start_node,
-                        'end_node': task_node.end_node,
-                        'ac_class': task_node.ac_class
-                    }
-                    tug_schedule[tug_id].append(task_dict)
-                elif task_node.task_type == 'charging':
-                    task_dict = {
-                        'ac_id': task_node.task_id,
-                        'direction': "CH",
-                        't_start': task_node.t_start,
-                        't_end': task_node.t_end,
-                        'start_node': task_node.start_node,
-                        'end_node': task_node.end_node
-                    }
-                    tug_schedule[tug_id].append(task_dict)
-
-        return tug_schedule
