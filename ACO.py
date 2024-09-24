@@ -108,7 +108,7 @@ class TeACO:
                 # Append task to route and remove from available tasks
                 tug_route.append(next_task)
                 last_task_ind = tug_route[-1]
-                if solver.task_nodes[next_task].task_type == 'towing':
+                if type(solver.task_nodes[next_task]) is TowNode:
                     tow_tasks.remove(next_task)
 
             solution.append(tug_route)
@@ -130,11 +130,11 @@ class TeACO:
         return ant_solutions
 
     def calc_solution_obj(self, solution):
-        fuel_savings = 0
+        solution_obj = 0
         for tug_path in solution:
-            fuel_savings += np.sum(self.task_objectives[np.array(tug_path)])
+            solution_obj += np.sum(self.task_objectives[np.array(tug_path)])
 
-        return fuel_savings
+        return solution_obj
 
     def get_tug_feasible_tasks(self, last_task, available_tasks, tug_battery):
         time_feas_tasks = self.time_feasible_tasks[last_task]
@@ -145,19 +145,16 @@ class TeACO:
         available_set = set(available_tasks)
         time_feas_set = set(time_feas_tasks)
 
-        # if available_tasks.isdisjoint(set(time_feas_tasks)):
-        #     return None
-
-        if tug_battery >= self.tug_props['battery_cap']:
-            return np.array(list(time_feas_set & available_set))
-
         time_available_set = available_set & time_feas_set
-        if type(self.task_nodes[last_feas_task]) is ChargeNode:
-            time_available_set.add(last_feas_task)
-
-        # time_available_tasks = np.array(list(set(time_feas_tasks) & (available_tasks | set(self.charge_indices))))
         if not time_available_set:
             return None
+
+        if tug_battery >= self.tug_props['battery_cap']:
+            return np.array(list(time_available_set))
+
+        # Add charge task back
+        if type(self.task_nodes[last_feas_task]) is ChargeNode:
+            time_available_set.add(last_feas_task)
 
         time_available_tasks = np.array(list(time_available_set))
         task_and_return_energy = self.energy_task_and_return[last_task, time_available_tasks]
@@ -175,7 +172,7 @@ class TeACO:
         pheromones = self.pheromones[last_task, feas_tasks]
         heuristics = self.heuristics[last_task, feas_tasks]
 
-        if feas_tasks[-1] in self.charge_indices:
+        if type(self.task_nodes[feas_tasks[-1]]) is ChargeNode:
             heuristics[-1] = 1 - tug_battery / self.tug_props['battery_cap']
 
         p_values = pheromones ** self.alpha * heuristics ** self.beta
