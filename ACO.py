@@ -137,18 +137,32 @@ class TeACO:
         return fuel_savings
 
     def get_tug_feasible_tasks(self, last_task, available_tasks, tug_battery):
-        available_tasks = set(available_tasks)
         time_feas_tasks = self.time_feasible_tasks[last_task]
-        if available_tasks.isdisjoint(set(time_feas_tasks)):
+        if len(time_feas_tasks) == 0:
             return None
+        last_feas_task = time_feas_tasks[-1]
+
+        available_set = set(available_tasks)
+        time_feas_set = set(time_feas_tasks)
+
+        # if available_tasks.isdisjoint(set(time_feas_tasks)):
+        #     return None
 
         if tug_battery >= self.tug_props['battery_cap']:
-            return np.array(list(set(time_feas_tasks) & available_tasks))
+            return np.array(list(time_feas_set & available_set))
 
-        time_available_tasks = np.array(list(set(time_feas_tasks) & (available_tasks | set(self.charge_indices))))
+        time_available_set = available_set & time_feas_set
+        if type(self.task_nodes[last_feas_task]) is ChargeNode:
+            time_available_set.add(last_feas_task)
 
+        # time_available_tasks = np.array(list(set(time_feas_tasks) & (available_tasks | set(self.charge_indices))))
+        if not time_available_set:
+            return None
+
+        time_available_tasks = np.array(list(time_available_set))
         task_and_return_energy = self.energy_task_and_return[last_task, time_available_tasks]
-        feas_task_ind = np.where(tug_battery + task_and_return_energy > 0)[0]
+        remaining_energy = tug_battery + task_and_return_energy
+        feas_task_ind = np.where(remaining_energy > 0)[0]
         feas_tasks = time_available_tasks[feas_task_ind]
 
         return feas_tasks
@@ -264,9 +278,11 @@ class TeACO:
             if energy > 0:
                 raise ValueError(f"Energy to depot should be negative at index {i}")
 
+        # Max tugs must be integer
         if not isinstance(max_tugs, int):
             raise TypeError("max_tugs must be an integer")
 
+        # Max tugs must be positive
         if not max_tugs > 0:
             raise ValueError("max_tugs must be positive")
 
