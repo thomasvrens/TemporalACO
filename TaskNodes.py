@@ -24,14 +24,6 @@ class TowNode(TaskNode):
         self.ac_id = ac_id
         self.task_type = "towing"
 
-    def get_task_dict(self):
-        task_dict = {
-            'end_node': self.end_node,
-            't_end': self.t_end,
-            'ac_id': self.ac_id
-        }
-        return task_dict
-
 class ChargeNode(TaskNode):
     def __init__(self, task_id, t_start, depot_node, index, charge_interval, task_energy, task_objective=0):
 

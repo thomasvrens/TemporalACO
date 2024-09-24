@@ -5,12 +5,18 @@ import matplotlib.pyplot as plt
 
 from tqdm import tqdm
 from multiprocessing import Pool
+from TemporalACO.TaskNodes import *
 
 class TeACO:
     def __init__(self, task_nodes, feasible_tasks,
                  task_energy, moving_energy, energy_to_depot,
                  aco_params, tug_props, max_tugs,
                  parallel=False, plot_obj=True):
+
+        self.validate_inputs(task_nodes, feasible_tasks,
+                 task_energy, moving_energy, energy_to_depot,
+                 aco_params, tug_props, max_tugs)
+
         self.tug_props = tug_props
         self.n_ants = aco_params['n_ants']
         self.n_iterations = aco_params['n_iterations']
@@ -213,3 +219,56 @@ class TeACO:
         deposit = self.calc_solution_obj(solution) * self.deposit_factor
 
         return deposit
+
+    def validate_inputs(self, task_nodes, feasible_tasks,
+                 task_energy, moving_energy, energy_to_depot,
+                 aco_params, tug_props, max_tugs):
+
+        # Check task nodes starts with start node
+        if not type(task_nodes[0]) is StartNode:
+            raise TypeError("First TaskNode must be of type StartNode")
+
+        # Only one StartNode
+        if sum(1 for node in task_nodes if type(node) is StartNode) > 1:
+            raise ValueError("task_nodes should only contain 1 StartNode")
+
+
+        # Feasible tasks contain at most one charge index
+        # Each feasible task should have moving energy associated with it
+        # Moving energy should be negative
+        for i, tasks in enumerate(feasible_tasks):
+            for otask_index in tasks:
+                num_charge = 0
+                if type(task_nodes[otask_index]) is ChargeNode:
+                    num_charge += 1
+
+                if num_charge > 1:
+                    raise ValueError(f"Feasible tasks at index {i} should only contain one ChargeNode")
+                if num_charge == 1 and type(task_nodes[tasks[-1]]) is not ChargeNode:
+                    raise TypeError(f"Last index of feasible tasks for task {i} should be the charge task")
+                if np.isnan(moving_energy[i, otask_index]):
+                    raise TypeError(f"Moving energy should not be nan at index {i}, {otask_index}")
+                if moving_energy[i, otask_index] > 0:
+                    raise ValueError(f"Moving energy should be negative at index {i}, {otask_index}")
+
+
+        # Charge nodes positive energy, tow nodes negative
+        for i, energy in enumerate(task_energy):
+            if type(task_nodes[i]) is TowNode and energy > 0:
+                raise ValueError(f"Task {i} is a tow task and should have negative energy")
+            if type(task_nodes[i]) is ChargeNode and energy < 0:
+                raise ValueError(f"Task {i} is a charge task and should have positive energy")
+
+        # Energy to depot should be negative
+        for i, energy in enumerate(energy_to_depot):
+            if energy > 0:
+                raise ValueError(f"Energy to depot should be negative at index {i}")
+
+        if not isinstance(max_tugs, int):
+            raise TypeError("max_tugs must be an integer")
+
+        if not max_tugs > 0:
+            raise ValueError("max_tugs must be positive")
+
+
+
