@@ -1,4 +1,5 @@
 import multiprocessing
+import warnings
 
 import numpy as np
 import matplotlib.pyplot as plt
@@ -53,6 +54,23 @@ class TeACO:
 
         print(f"Initialized ACO solver module with alpha={self.alpha}, beta={self.beta}, evaporation_rate={self.evaporation_rate}")
 
+    def set_tuning_params(self, **kwargs):
+        valid_params = ['alpha', 'beta', 'evaporation_rate', 'n_ants', 'n_ranked_ants', 'deposit_factor']
+
+        params_set = {key: value for key, value in kwargs.items() if key in valid_params and value is not None}
+        invalid_params = [key for key in kwargs if key not in valid_params]
+
+        if invalid_params:
+            warnings.warn(f"Invalid parameters passed to set_tuning_params(): {', '.join(invalid_params)}", UserWarning)
+
+        if not params_set:
+            raise ValueError("No valid parameters were passed to set_tuning_params()")
+
+        for key, value in params_set.items():
+            setattr(self, key, value)
+
+        # print("Tuning values set: " + ", ".join(f"{key} = {value}" for key, value in params_set.items()))
+
     def solve(self):
         print(f"Starting ACO solver with {self.n_iterations} iterations and {self.n_ants} ants...")
         best_solution = None
@@ -82,7 +100,7 @@ class TeACO:
         if self.plot_obj:
             plt.plot(it_best_objectives)
             plt.show()
-        return best_solution
+        return best_solution, best_obj
 
     @classmethod
     def construct_single_ant_solution(cls, solver):
@@ -170,7 +188,7 @@ class TeACO:
             return feas_tasks[0]
 
         pheromones = self.pheromones[last_task, feas_tasks]
-        heuristics = self.heuristics[last_task, feas_tasks]
+        heuristics = self.heuristics[last_task, feas_tasks].copy()
 
         if type(self.task_nodes[feas_tasks[-1]]) is ChargeNode:
             heuristics[-1] = 1 - tug_battery / self.tug_props['battery_cap']
@@ -190,8 +208,8 @@ class TeACO:
             reachable_nodes = self.time_feasible_tasks[i]
             for j in reachable_nodes:
                 time_till_available = self.task_nodes[j].t_end - self.task_nodes[i].t_end
-                fuel_savings = self.task_objectives[j]
-                h_value = fuel_savings / time_till_available
+                objective = self.task_objectives[j]
+                h_value = objective / time_till_available
                 h_mat[i, j] = h_value
 
         # Row-wise scaling between 0 and 1
