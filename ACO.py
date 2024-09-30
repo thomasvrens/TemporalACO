@@ -12,7 +12,7 @@ class TeACO:
     def __init__(self, task_nodes, feasible_tasks,
                  task_energy, moving_energy, energy_to_depot,
                  aco_params, tug_props, max_tugs,
-                 parallel=False, plot_obj=True):
+                 parallel=False, plot_obj=True, silent=False):
 
         self.validate_inputs(task_nodes, feasible_tasks,
                  task_energy, moving_energy, energy_to_depot,
@@ -28,8 +28,10 @@ class TeACO:
         self.pheromone_scheme = aco_params['pheromone_scheme']
         self.n_ranked_ants = aco_params['n_ranked_ants']
         self.max_tugs = max_tugs
+
         self.parallel = parallel
         self.plot_obj = plot_obj
+        self.silent = silent
 
         # Init task node list
         self.task_nodes = task_nodes
@@ -69,10 +71,12 @@ class TeACO:
         for key, value in params_set.items():
             setattr(self, key, value)
 
-        # print("Tuning values set: " + ", ".join(f"{key} = {value}" for key, value in params_set.items()))
+        if not self.silent:
+            print("Tuning values set: " + ", ".join(f"{key} = {value}" for key, value in params_set.items()))
 
     def solve(self):
-        print(f"Starting ACO solver with {self.n_iterations} iterations and {self.n_ants} ants...")
+        if not self.silent:
+            print(f"Starting ACO solver with {self.n_iterations} iterations and {self.n_ants} ants...")
         best_solution = None
         best_obj = 0
 
@@ -229,24 +233,30 @@ class TeACO:
         # Evaporation
         self.pheromones *= (1 - self.evaporation_rate)
 
-        if self.pheromone_scheme == 'ranked':
-            sorted_solutions = [x for _, x in sorted(zip(objectives, ant_solutions), reverse=True)]
+        # Sort objectives and solutions
+        sorted_pairs = sorted(zip(objectives, ant_solutions), reverse=True)
+        sorted_obj, sorted_solutions = map(list, zip(*sorted_pairs))
+        max_obj = sorted_obj[0]
+        min_obj = sorted_obj[-1]
 
-            for r in range(min(self.n_ranked_ants - 1, len(ant_solutions))):
-                pheromone_deposit = self.calc_pheromone_deposit(sorted_solutions[r]) * (self.n_ranked_ants - r)
+        if self.pheromone_scheme == 'ranked':
+            for r in range(min(self.n_ranked_ants, len(ant_solutions))):
+                pheromone_deposit = self.calc_pheromone_deposit(sorted_obj[r], min_obj, max_obj) * (self.n_ranked_ants - r)
+
                 for tug_route in sorted_solutions[r]:
                     for i in range(len(tug_route)-1):
                         self.pheromones[tug_route[i], tug_route[i+1]] += pheromone_deposit
         else:
-            for solution in ant_solutions:
-                pheromone_deposit = self.calc_pheromone_deposit(solution)
-                for tug_route in solution:
+            for r in range(len(ant_solutions)):
+                pheromone_deposit = self.calc_pheromone_deposit(objectives[r], min_obj, max_obj)
+
+                for tug_route in ant_solutions[r]:
                     for i in range(len(tug_route)-1):
                         self.pheromones[tug_route[i], tug_route[i+1]] += pheromone_deposit
 
-    def calc_pheromone_deposit(self, solution):
-        deposit = self.calc_solution_obj(solution) * self.deposit_factor
-
+    def calc_pheromone_deposit(self, objective, min, max):
+        scaled_obj = (objective - min) / (max - min)
+        deposit = scaled_obj * self.deposit_factor
         return deposit
 
     def validate_inputs(self, task_nodes, feasible_tasks,
