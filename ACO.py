@@ -108,7 +108,7 @@ class TeACO:
 
     @classmethod
     def construct_single_ant_solution(cls, solver):
-        tow_tasks = list(solver.tow_indices.copy())
+        tow_tasks = set(solver.tow_indices)
         solution = []
 
         while len(solution) < solver.max_tugs:
@@ -130,7 +130,10 @@ class TeACO:
                 # Append task to route and remove from available tasks
                 tug_route.append(next_task)
                 last_task_ind = tug_route[-1]
-                if type(solver.task_nodes[next_task]) is TowNode:
+                if type(solver.task_nodes[next_task]) is TowNode and solver.task_nodes[next_task].alt_indices:
+                    for ind in solver.task_nodes[next_task].alt_indices:
+                        tow_tasks.remove(ind)
+                elif type(solver.task_nodes[next_task]) is TowNode:
                     tow_tasks.remove(next_task)
 
             solution.append(tug_route)
@@ -158,13 +161,13 @@ class TeACO:
 
         return solution_obj
 
-    def get_tug_feasible_tasks(self, last_task, available_tasks, tug_battery):
+    def get_tug_feasible_tasks(self, last_task, available_set, tug_battery):
         time_feas_tasks = self.time_feasible_tasks[last_task]
         if len(time_feas_tasks) == 0:
             return None
         last_feas_task = time_feas_tasks[-1]
 
-        available_set = set(available_tasks)
+        # available_set = set(available_tasks)
         time_feas_set = set(time_feas_tasks)
 
         time_available_set = available_set & time_feas_set

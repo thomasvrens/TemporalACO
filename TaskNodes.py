@@ -17,11 +17,13 @@ class TaskNode:
 
 class TowNode(TaskNode):
 
-    def __init__(self, task_id, t_start, t_end, start_node, end_node, index, task_objective, ac_id, task_energy=0):
+    def __init__(self, task_id, t_start, t_end, start_node, end_node, index, task_objective, ac_id, tow_id, task_energy=0):
 
         super().__init__(task_id, t_start, t_end, start_node, end_node, index, task_objective, task_energy)
 
         self.ac_id = ac_id
+        self.tow_id = tow_id
+        self.alt_indices = None
         self.task_type = "towing"
 
 class ChargeNode(TaskNode):

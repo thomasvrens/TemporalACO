@@ -12,7 +12,7 @@ class ACOTuner:
         evaporation_rate = trial.suggest_float('evaporation_rate', 0.005, 0.5)
         deposit_factor = trial.suggest_float('deposit_factor', 0.01, 2)
         # n_ants = trial.suggest_int('n_ants', 50, 200)
-        n_ranked_ants = trial.suggest_int('n_ranked_ants', 3, 20)
+        n_ranked_ants = trial.suggest_int('n_ranked_ants', 2, 20)
 
 
         self.aco_copy = copy.deepcopy(self.aco_orig)
