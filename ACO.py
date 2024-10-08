@@ -174,11 +174,11 @@ class TeACO:
         if not time_available_set:
             return None
 
-        if tug_battery >= self.tug_props['battery_cap']:
-            return np.array(list(time_available_set))
+        # if tug_battery >= self.tug_props['battery_cap']:
+        #     return np.array(list(time_available_set))
 
-        # Add charge task back
-        if type(self.task_nodes[last_feas_task]) is ChargeNode:
+        # Add charge task back if battery is not full
+        if type(self.task_nodes[last_feas_task]) is ChargeNode and tug_battery < self.tug_props['battery_cap']:
             time_available_set.add(last_feas_task)
 
         time_available_tasks = np.array(list(time_available_set))
@@ -203,7 +203,13 @@ class TeACO:
         p_values = pheromones ** self.alpha * heuristics ** self.beta
         probabilities = p_values / np.sum(p_values)
 
-        selected_index = np.random.choice(len(feas_tasks), p=probabilities)
+        # selected_index = np.random.choice(len(feas_tasks), p=probabilities)
+        # Faster way to select index
+        cumprob = np.cumsum(probabilities)
+        rand_value = np.random.random()
+
+        # Find the index corresponding to the random value in the cumulative probability
+        selected_index = np.searchsorted(cumprob, rand_value)
 
         return feas_tasks[selected_index]
 
