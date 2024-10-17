@@ -27,6 +27,7 @@ class TeACO:
         self.deposit_factor = aco_params['deposit_factor']
         self.pheromone_scheme = aco_params['pheromone_scheme']
         self.n_ranked_ants = aco_params['n_ranked_ants']
+        self.reset_every = aco_params['reset_every']
         self.max_tugs = max_tugs
 
         self.parallel = parallel
@@ -92,7 +93,7 @@ class TeACO:
             it_best_objective = max(objectives)
 
             # Update pheromones
-            self.update_pheromone(ant_solutions, objectives)
+            self.update_pheromone(ant_solutions, objectives, i)
 
             it_best_index = objectives.index(it_best_objective)
             iteration_best = ant_solutions[it_best_index]
@@ -221,7 +222,8 @@ class TeACO:
             reachable_nodes = self.time_feasible_tasks[i]
             for j in reachable_nodes:
                 time_till_available = self.task_nodes[j].t_end - self.task_nodes[i].t_end
-                objective = self.task_objectives[j]
+                assert time_till_available > 0, "Time till available should be positive between feasible tasks"
+                objective = max(self.task_objectives[j], 0)
                 h_value = objective / time_till_available
                 h_mat[i, j] = h_value
 
@@ -238,7 +240,7 @@ class TeACO:
     def initialize_pheromone(self):
         return np.ones((len(self.task_nodes), len(self.task_nodes)))
 
-    def update_pheromone(self, ant_solutions, objectives):
+    def update_pheromone(self, ant_solutions, objectives, iteration):
         # Evaporation
         self.pheromones *= (1 - self.evaporation_rate)
 
@@ -247,6 +249,9 @@ class TeACO:
         sorted_obj, sorted_solutions = map(list, zip(*sorted_pairs))
         max_obj = sorted_obj[0]
         min_obj = sorted_obj[-1]
+
+        if type(self.reset_every) is int and iteration % self.reset_every == 0:
+            self.pheromones = self.initialize_pheromone()
 
         if self.pheromone_scheme == 'ranked':
             for r in range(min(self.n_ranked_ants, len(ant_solutions))):
