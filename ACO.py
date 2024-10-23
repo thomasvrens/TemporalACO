@@ -12,22 +12,36 @@ class TeACO:
     def __init__(self, task_nodes, feasible_tasks,
                  task_energy, moving_energy, energy_to_depot,
                  aco_params, tug_props, max_tugs,
-                 parallel=False, plot_obj=True, silent=False):
+                 parallel=False, plot_obj=True, silent=False, tuner_params=None):
 
         self.validate_inputs(task_nodes, feasible_tasks,
                  task_energy, moving_energy, energy_to_depot,
                  aco_params, tug_props, max_tugs)
 
         self.tug_props = tug_props
-        self.n_ants = aco_params['n_ants']
-        self.n_iterations = aco_params['n_iterations']
-        self.alpha = aco_params['alpha']
-        self.beta = aco_params['beta']
-        self.evaporation_rate = aco_params['evaporation_rate']
-        self.deposit_factor = aco_params['deposit_factor']
-        self.pheromone_scheme = aco_params['pheromone_scheme']
-        self.n_ranked_ants = aco_params['n_ranked_ants']
-        self.reset_every = aco_params['reset_every']
+
+        if tuner_params:
+            self.n_ants = tuner_params['n_ants']
+            self.n_iterations = tuner_params['n_iterations']
+            self.initial_pheromone = tuner_params['initial_pheromone']
+            self.pheromone_scheme = tuner_params['pheromone_scheme']
+            self.alpha = 'TUNE'
+            self.beta = 'TUNE'
+            self.evaporation_rate = 'TUNE'
+            self.deposit_factor = 'TUNE'
+            self.n_ranked_ants = 'TUNE'
+        else:
+            self.n_ants = aco_params['n_ants']
+            self.n_iterations = aco_params['n_iterations']
+            self.alpha = aco_params['alpha']
+            self.beta = aco_params['beta']
+            self.evaporation_rate = aco_params['evaporation_rate']
+            self.deposit_factor = aco_params['deposit_factor']
+            self.pheromone_scheme = aco_params['pheromone_scheme']
+            self.n_ranked_ants = aco_params['n_ranked_ants']
+            self.initial_pheromone = aco_params['initial_pheromone']
+
+        # self.reset_every = aco_params['reset_every']
         self.max_tugs = max_tugs
 
         self.parallel = parallel
@@ -50,12 +64,19 @@ class TeACO:
 
         # Initialize pheromones and heuristics
         print("Initializing pheromones and heuristics...", end=" ")
-        self.pheromones = self.initialize_pheromone()
-        self.heuristics = self.initialize_heuristics()
+        self.initialize_pheromone()
+        self.initialize_heuristics()
         print("DONE")
 
+        # np.seterr(all='raise')
 
-        print(f"Initialized ACO solver module with alpha={self.alpha}, beta={self.beta}, evaporation_rate={self.evaporation_rate}")
+
+        print(f"Initialized ACO solver module with alpha={self.alpha}, beta={self.beta}, evaporation_rate={self.evaporation_rate}, deposit factor={self.deposit_factor}")
+        print(f"Number of iterations: {self.n_iterations}, number of ants: {self.n_ants}")
+        print(f"Pheromone scheme: {self.pheromone_scheme}")
+        if self.pheromone_scheme == 'ranked':
+            print(f'Number of ranked ants: {self.n_ranked_ants}')
+            
 
     def set_tuning_params(self, **kwargs):
         valid_params = ['alpha', 'beta', 'evaporation_rate', 'n_ants', 'n_ranked_ants', 'deposit_factor']
@@ -75,14 +96,16 @@ class TeACO:
         if not self.silent:
             print("Tuning values set: " + ", ".join(f"{key} = {value}" for key, value in params_set.items()))
 
-    def solve(self):
+    def solve(self, plot_file=None):
         if not self.silent:
             print(f"Starting ACO solver with {self.n_iterations} iterations and {self.n_ants} ants...")
         best_solution = None
         best_obj = 0
 
+        assert np.allclose(self.pheromones, self.initial_pheromone), "Solve initiated but pheromones are not at their initial value"
+
         it_best_objectives = []
-        for i in tqdm(range(self.n_iterations)):
+        for i in tqdm(range(self.n_iterations), disable=self.silent):
             if not self.parallel:
                 ant_solutions = self.construct_ant_solutions()
             else:
@@ -103,8 +126,13 @@ class TeACO:
                 best_obj = it_best_objective
 
         if self.plot_obj:
+            plt.style.use('default')
             plt.plot(it_best_objectives)
             plt.show()
+        if plot_file:
+            plt.plot(it_best_objectives)
+            plt.savefig(plot_file)
+            plt.close()
         return best_solution, best_obj
 
     @classmethod
@@ -178,11 +206,12 @@ class TeACO:
         # if tug_battery >= self.tug_props['battery_cap']:
         #     return np.array(list(time_available_set))
 
+        time_available_list = list(time_available_set)
         # Add charge task back if battery is not full
         if type(self.task_nodes[last_feas_task]) is ChargeNode and tug_battery < self.tug_props['battery_cap']:
-            time_available_set.add(last_feas_task)
+            time_available_list.append(last_feas_task)
 
-        time_available_tasks = np.array(list(time_available_set))
+        time_available_tasks = np.array(time_available_list)
         task_and_return_energy = self.energy_task_and_return[last_task, time_available_tasks]
         remaining_energy = tug_battery + task_and_return_energy
         feas_task_ind = np.where(remaining_energy > 0)[0]
@@ -202,8 +231,15 @@ class TeACO:
             heuristics[-1] = 1 - tug_battery / self.tug_props['battery_cap']
 
         p_values = pheromones ** self.alpha * heuristics ** self.beta
-        probabilities = p_values / np.sum(p_values)
-
+        with warnings.catch_warnings():
+            warnings.simplefilter("error", RuntimeWarning)
+            try:
+                probabilities = p_values / np.sum(p_values)
+            except RuntimeWarning as rw:
+                print(f'Warning encountered and treated as exception: {rw}')
+            except Exception as e:
+                print(f'Something went wrong when selecting next task: {e}')
+                
         # selected_index = np.random.choice(len(feas_tasks), p=probabilities)
         # Faster way to select index
         cumprob = np.cumsum(probabilities)
@@ -235,10 +271,10 @@ class TeACO:
         h_norm = (h_mat - row_min) / denominator
         h_norm = np.nan_to_num(h_norm, nan=0)
 
-        return h_norm
+        self.heuristics = h_norm
 
     def initialize_pheromone(self):
-        return np.ones((len(self.task_nodes), len(self.task_nodes)))
+        self.pheromones = np.ones((len(self.task_nodes), len(self.task_nodes))) * self.initial_pheromone
 
     def update_pheromone(self, ant_solutions, objectives, iteration):
         # Evaporation
@@ -250,8 +286,8 @@ class TeACO:
         max_obj = sorted_obj[0]
         min_obj = sorted_obj[-1]
 
-        if type(self.reset_every) is int and iteration % self.reset_every == 0:
-            self.pheromones = self.initialize_pheromone()
+        # if type(self.reset_every) is int and iteration % self.reset_every == 0:
+        #     self.pheromones = self.initialize_pheromone()
 
         if self.pheromone_scheme == 'ranked':
             for r in range(min(self.n_ranked_ants, len(ant_solutions))):
@@ -269,7 +305,12 @@ class TeACO:
                         self.pheromones[tug_route[i], tug_route[i+1]] += pheromone_deposit
 
     def calc_pheromone_deposit(self, objective, min, max):
-        scaled_obj = (objective - min) / (max - min)
+        if min == max:
+            denom = 1
+        else:
+            denom = max - min
+
+        scaled_obj = (objective - min) / denom
         deposit = scaled_obj * self.deposit_factor
         return deposit
 
