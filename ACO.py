@@ -5,20 +5,29 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 from tqdm import tqdm
-from multiprocessing import Pool
+# from multiprocessing import Pool
 from TemporalACO.TaskNodes import *
 
 class TeACO:
-    def __init__(self, task_nodes, feasible_tasks,
+    def __init__(self, task_nodes, feasible_tasks, inter_charge_nodes,
                  task_energy, moving_energy, energy_to_depot,
                  aco_params, tug_props, max_tugs,
-                 parallel=False, plot_obj=True, silent=False, tuner_params=None):
+                 parallel=False, plot_obj=True, silent=False, tuner_params=None,
+                 last_task_indices=None, last_charges=None):
 
         self.validate_inputs(task_nodes, feasible_tasks,
                  task_energy, moving_energy, energy_to_depot,
                  aco_params, tug_props, max_tugs)
 
         self.tug_props = tug_props
+        self.last_task_indices = last_task_indices
+        self.last_charges = last_charges
+
+        if last_task_indices is not None and last_charges is not None:
+            self.tug_id_list = list(last_task_indices.keys())
+            self.start_tow_indices = [last_task_indices[tug_id] for tug_id in self.tug_id_list if type(task_nodes[last_task_indices[tug_id]]) is TowNode]
+        else:
+            self.tug_id_list = None
 
         if tuner_params:
             self.n_ants = tuner_params['n_ants']
@@ -51,6 +60,7 @@ class TeACO:
         # Init task node list
         self.task_nodes = task_nodes
         self.time_feasible_tasks = feasible_tasks
+        self.inter_charge_nodes = inter_charge_nodes
         self.task_energy = task_energy
         self.moving_energy = moving_energy
         self.energy_to_depot = energy_to_depot
@@ -67,9 +77,6 @@ class TeACO:
         self.initialize_pheromone()
         self.initialize_heuristics()
         print("DONE")
-
-        # np.seterr(all='raise')
-
 
         print(f"Initialized ACO solver module with alpha={self.alpha}, beta={self.beta}, evaporation_rate={self.evaporation_rate}, deposit factor={self.deposit_factor}")
         print(f"Number of iterations: {self.n_iterations}, number of ants: {self.n_ants}")
@@ -141,9 +148,16 @@ class TeACO:
         solution = []
 
         while len(solution) < solver.max_tugs:
-            last_task_ind = 0
-            tug_route = [0]
-            tug_battery = solver.tug_props['battery_cap']
+            if solver.tug_id_list is not None:
+                tug_id = solver.tug_id_list[len(solution)]
+                last_task_ind = solver.last_task_indices[tug_id]
+                tug_route = [last_task_ind]
+                tug_battery = solver.last_charges[tug_id]
+                tow_tasks.difference_update(solver.start_tow_indices)
+            else:
+                last_task_ind = 0
+                tug_route = [0]
+                tug_battery = solver.tug_props['battery_cap']
 
             while True:
                 tug_feasible_tasks_ind = solver.get_tug_feasible_tasks(last_task_ind, tow_tasks, tug_battery)
@@ -157,8 +171,12 @@ class TeACO:
                 tug_battery = min(tug_battery, solver.tug_props['battery_cap'])
 
                 # Append task to route and remove from available tasks
-                tug_route.append(next_task)
-                last_task_ind = tug_route[-1]
+                if type(solver.task_nodes[next_task]) is TowNode:
+                    tug_route = tug_route + solver.inter_charge_nodes[last_task_ind][next_task] + [next_task]
+                else:
+                    tug_route.append(next_task)
+
+                last_task_ind = next_task
                 if type(solver.task_nodes[next_task]) is TowNode and solver.task_nodes[next_task].alt_indices:
                     for ind in solver.task_nodes[next_task].alt_indices:
                         tow_tasks.remove(ind)
@@ -319,12 +337,12 @@ class TeACO:
                  aco_params, tug_props, max_tugs):
 
         # Check task nodes starts with start node
-        if not type(task_nodes[0]) is StartNode:
-            raise TypeError("First TaskNode must be of type StartNode")
+        # if not type(task_nodes[0]) is StartNode:
+        #     raise TypeError("First TaskNode must be of type StartNode")
 
         # Only one StartNode
-        if sum(1 for node in task_nodes if type(node) is StartNode) > 1:
-            raise ValueError("task_nodes should only contain 1 StartNode")
+        # if sum(1 for node in task_nodes if type(node) is StartNode) > 1:
+        #     raise ValueError("task_nodes should only contain 1 StartNode")
 
 
         # Feasible tasks contain at most one charge index
