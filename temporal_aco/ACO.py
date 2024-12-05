@@ -6,7 +6,7 @@ import matplotlib.pyplot as plt
 
 from tqdm import tqdm
 # from multiprocessing import Pool
-from TemporalACO.TaskNodes import *
+from .TaskNodes import *
 
 class TeACO:
     def __init__(self, task_nodes, feasible_tasks, inter_charge_nodes,
