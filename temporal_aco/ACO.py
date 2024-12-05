@@ -274,8 +274,16 @@ class TeACO:
 
         for i in range(n_task_nodes):
             reachable_nodes = self.time_feasible_tasks[i]
+            if len(reachable_nodes) > 0:
+                reachable_t_start = [self.task_nodes[index].t_start for index in reachable_nodes]
+                t_first_reachable = min(reachable_t_start)
             for j in reachable_nodes:
-                time_till_available = self.task_nodes[j].t_end - self.task_nodes[i].t_end
+                # New heuristic time
+                # TODO: test this in TA tester!
+                # TODO: include some penalty term for where the ETV becomes available: time to BASE? avg time to some gates?
+                time_till_available = self.task_nodes[j].t_end - t_first_reachable
+                # Old heuristic time
+                # time_till_available = self.task_nodes[j].t_end - self.task_nodes[i].t_end
                 assert time_till_available > 0, "Time till available should be positive between feasible tasks"
                 objective = max(self.task_objectives[j], 0)
                 h_value = objective / time_till_available
