@@ -8,6 +8,7 @@ from tqdm import tqdm
 # from multiprocessing import Pool
 from .TaskNodes import *
 
+
 class TeACO:
     def __init__(self, task_nodes, feasible_tasks, inter_charge_nodes,
                  task_energy, moving_energy, energy_to_depot,
@@ -16,8 +17,8 @@ class TeACO:
                  last_task_indices=None, last_charges=None):
 
         self.validate_inputs(task_nodes, feasible_tasks,
-                 task_energy, moving_energy, energy_to_depot,
-                 aco_params, tug_props, max_tugs)
+                             task_energy, moving_energy, energy_to_depot,
+                             aco_params, tug_props, max_tugs)
 
         self.tug_props = tug_props
         self.last_task_indices = last_task_indices
@@ -65,8 +66,8 @@ class TeACO:
         self.moving_energy = moving_energy
         self.energy_to_depot = energy_to_depot
 
-        self.tow_indices = np.array([node.index for node in self.task_nodes if node.task_type=='towing'])
-        self.charge_indices = np.array([node.index for node in self.task_nodes if node.task_type=='charging'])
+        self.tow_indices = np.array([node.index for node in self.task_nodes if node.task_type == 'towing'])
+        self.charge_indices = np.array([node.index for node in self.task_nodes if node.task_type == 'charging'])
         self.start_index = 0
 
         self.energy_task_and_return = self.moving_energy + self.task_energy + self.energy_to_depot
@@ -83,7 +84,6 @@ class TeACO:
         print(f"Pheromone scheme: {self.pheromone_scheme}")
         if self.pheromone_scheme == 'ranked':
             print(f'Number of ranked ants: {self.n_ranked_ants}')
-            
 
     def set_tuning_params(self, **kwargs):
         valid_params = ['alpha', 'beta', 'evaporation_rate', 'n_ants', 'n_ranked_ants', 'deposit_factor']
@@ -161,10 +161,15 @@ class TeACO:
 
             while True:
                 tug_feasible_tasks_ind = solver.get_tug_feasible_tasks(last_task_ind, tow_tasks, tug_battery)
+                # No feasible tasks left
                 if tug_feasible_tasks_ind is None or tug_feasible_tasks_ind.size == 0:
                     break
 
                 next_task = solver.select_next_task(last_task_ind, tug_feasible_tasks_ind, tug_battery)
+
+                # All task heuristics are 0
+                if next_task is None:
+                    break
 
                 # Update tug battery
                 tug_battery += (solver.moving_energy[last_task_ind, next_task] + solver.task_energy[next_task])
@@ -198,7 +203,7 @@ class TeACO:
     def construct_parallel_ant_solutions(self):
         num_cores = multiprocessing.cpu_count()
         with Pool(processes=num_cores) as pool:
-            ant_solutions = pool.map(self.construct_single_ant_solution, [self]*self.n_ants)
+            ant_solutions = pool.map(self.construct_single_ant_solution, [self] * self.n_ants)
         return ant_solutions
 
     def calc_solution_obj(self, solution):
@@ -249,17 +254,13 @@ class TeACO:
             heuristics[-1] = 1 - tug_battery / self.tug_props['battery_cap']
 
         p_values = pheromones ** self.alpha * heuristics ** self.beta
-        with warnings.catch_warnings():
-            warnings.simplefilter("error", RuntimeWarning)
-            try:
-                probabilities = p_values / np.sum(p_values)
-            except RuntimeWarning as rw:
-                print(f'Warning encountered and treated as exception: {rw}')
-            except Exception as e:
-                print(f'Something went wrong when selecting next task: {e}')
-                
-        # selected_index = np.random.choice(len(feas_tasks), p=probabilities)
-        # Faster way to select index
+
+        # No good tasks available (i.e. heuristics are all 0)
+        if np.sum(p_values) == 0:
+            return None
+
+        probabilities = p_values / np.sum(p_values)
+
         cumprob = np.cumsum(probabilities)
         rand_value = np.random.random()
 
@@ -271,8 +272,8 @@ class TeACO:
     def initialize_heuristics(self):
         n_task_nodes = len(self.task_nodes)
         h_mat = np.zeros((n_task_nodes, n_task_nodes))
-        t_end_tow_nodes = [self.task_nodes[index].t_end for index in self.tow_indices]
-        last_t_end = max(t_end_tow_nodes)
+        t_end_nodes = [node.t_end for node in self.task_nodes]
+        last_t_end = max(t_end_nodes)
 
         for i in range(n_task_nodes):
             reachable_nodes = self.time_feasible_tasks[i]
@@ -326,15 +327,15 @@ class TeACO:
                 pheromone_deposit = self.calc_pheromone_deposit(sorted_obj[r], min_obj, max_obj) * (self.n_ranked_ants - r)
 
                 for tug_route in sorted_solutions[r]:
-                    for i in range(len(tug_route)-1):
-                        self.pheromones[tug_route[i], tug_route[i+1]] += pheromone_deposit
+                    for i in range(len(tug_route) - 1):
+                        self.pheromones[tug_route[i], tug_route[i + 1]] += pheromone_deposit
         else:
             for r in range(len(ant_solutions)):
                 pheromone_deposit = self.calc_pheromone_deposit(objectives[r], min_obj, max_obj)
 
                 for tug_route in ant_solutions[r]:
-                    for i in range(len(tug_route)-1):
-                        self.pheromones[tug_route[i], tug_route[i+1]] += pheromone_deposit
+                    for i in range(len(tug_route) - 1):
+                        self.pheromones[tug_route[i], tug_route[i + 1]] += pheromone_deposit
 
     def calc_pheromone_deposit(self, objective, min, max):
         if min == max:
@@ -347,8 +348,8 @@ class TeACO:
         return deposit
 
     def validate_inputs(self, task_nodes, feasible_tasks,
-                 task_energy, moving_energy, energy_to_depot,
-                 aco_params, tug_props, max_tugs):
+                        task_energy, moving_energy, energy_to_depot,
+                        aco_params, tug_props, max_tugs):
 
         # Check task nodes starts with start node
         # if not type(task_nodes[0]) is StartNode:
@@ -357,7 +358,6 @@ class TeACO:
         # Only one StartNode
         # if sum(1 for node in task_nodes if type(node) is StartNode) > 1:
         #     raise ValueError("task_nodes should only contain 1 StartNode")
-
 
         # Feasible tasks contain at most one charge index
         # Each feasible task should have moving energy associated with it
@@ -376,7 +376,6 @@ class TeACO:
                     raise TypeError(f"Moving energy should not be nan at index {i}, {otask_index}")
                 if moving_energy[i, otask_index] > 0:
                     raise ValueError(f"Moving energy should be negative at index {i}, {otask_index}")
-
 
         # Charge nodes positive energy, tow nodes negative
         for i, energy in enumerate(task_energy):
